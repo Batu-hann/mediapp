@@ -1,9 +1,16 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Home, Pill, MessageCircle, MapPin, User } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 import { colors } from '../../src/theme';
 import { useAuth } from '../../src/AuthContext';
 import { t } from '../../src/i18n';
+
+const makeTabButton = (testID: string) => (props: any) => (
+  <Pressable {...props} testID={testID} android_ripple={{ color: 'transparent' }}>
+    {props.children}
+  </Pressable>
+);
 
 export default function TabsLayout() {
   const { language } = useAuth();
@@ -30,7 +37,7 @@ export default function TabsLayout() {
         options={{
           title: L.home,
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} strokeWidth={2} />,
-          tabBarTestID: 'tab-home',
+          tabBarButton: makeTabButton('tab-home'),
         }}
       />
       <Tabs.Screen
@@ -38,7 +45,7 @@ export default function TabsLayout() {
         options={{
           title: L.medications,
           tabBarIcon: ({ color, size }) => <Pill size={size} color={color} strokeWidth={2} />,
-          tabBarTestID: 'tab-medications',
+          tabBarButton: makeTabButton('tab-medications'),
         }}
       />
       <Tabs.Screen
@@ -46,7 +53,7 @@ export default function TabsLayout() {
         options={{
           title: L.chat,
           tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} strokeWidth={2} />,
-          tabBarTestID: 'tab-chat',
+          tabBarButton: makeTabButton('tab-chat'),
         }}
       />
       <Tabs.Screen
@@ -54,7 +61,7 @@ export default function TabsLayout() {
         options={{
           title: L.pharmacy,
           tabBarIcon: ({ color, size }) => <MapPin size={size} color={color} strokeWidth={2} />,
-          tabBarTestID: 'tab-pharmacy',
+          tabBarButton: makeTabButton('tab-pharmacy'),
         }}
       />
       <Tabs.Screen
@@ -62,7 +69,7 @@ export default function TabsLayout() {
         options={{
           title: L.profile,
           tabBarIcon: ({ color, size }) => <User size={size} color={color} strokeWidth={2} />,
-          tabBarTestID: 'tab-profile',
+          tabBarButton: makeTabButton('tab-profile'),
         }}
       />
     </Tabs>

@@ -590,6 +590,7 @@ async def chat_send(req: ChatRequest, user: dict = Depends(get_current_user)):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await db.chat_messages.insert_one(user_msg_doc)
+    user_msg_doc.pop("_id", None)
 
     try:
         chat = LlmChat(
@@ -610,6 +611,7 @@ async def chat_send(req: ChatRequest, user: dict = Depends(get_current_user)):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await db.chat_messages.insert_one(dict(ai_msg))
+    ai_msg.pop("_id", None)
 
     # Trim to last 50
     count = await db.chat_messages.count_documents({"user_id": user["id"]})
