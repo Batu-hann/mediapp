@@ -2,9 +2,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Pill, Camera, MessageCircle, MapPin, Flame, CheckCircle2, Clock, XCircle, Plus } from 'lucide-react-native';
+import { Pill, Camera, MessageCircle, MapPin, Flame, CheckCircle2, Clock, XCircle, Plus, AlertTriangle } from 'lucide-react-native';
 import { useAuth } from '../../src/AuthContext';
 import { api } from '../../src/api';
 import { colors, radius, spacing, shadows } from '../../src/theme';
@@ -26,14 +27,20 @@ export default function HomeScreen() {
   const router = useRouter();
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [missed, setMissed] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     try {
-      const [s, st] = await Promise.all([api.get('/schedule/today'), api.get('/stats/summary')]);
+      const [s, st, m] = await Promise.all([
+        api.get('/schedule/today'),
+        api.get('/stats/summary'),
+        api.get('/missed-doses', { params: { days: 2 } }),
+      ]);
       setSchedule(s.data.items);
       setStats(st.data);
+      setMissed(m.data.missed || []);
     } catch (e) {
       // ignore
     } finally {
@@ -43,6 +50,31 @@ export default function HomeScreen() {
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  useEffect(() => {
+    if (missed.length > 0) {
+      checkAndShowMissedAlert();
+    }
+  }, [missed]);
+
+  const checkAndShowMissedAlert = async () => {
+    try {
+      const lastAlerted = await AsyncStorage.getItem('last_alerted_missed');
+      const currentMissedKey = missed.map(m => `${m.medication_id}-${m.scheduled_date}-${m.scheduled_time}`).join(',');
+      
+      if (lastAlerted !== currentMissedKey) {
+        Alert.alert(
+          language === 'tr' ? 'Hatırlatma' : 'Reminder',
+          language === 'tr' 
+            ? `Saati geçmiş ${missed.length} adet ilacınız var! Lütfen aşağıdan kontrol edip ilaçlarınızı alın.` 
+            : `You have ${missed.length} overdue medications! Please check below and take your medications.`,
+          [{ text: language === 'tr' ? 'Tamam' : 'OK', onPress: () => AsyncStorage.setItem('last_alerted_missed', currentMissedKey) }]
+        );
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
@@ -104,6 +136,24 @@ export default function HomeScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.streakNum}>{stats.streak_days} {L.streakDays}</Text>
               <Text style={styles.streakSub}>{stats.streak_days} {L.streakMessage}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Missed doses warning */}
+        {missed.length > 0 && (
+          <View testID="missed-warning" style={styles.missedCard}>
+            <View style={styles.missedIcon}>
+              <AlertTriangle size={22} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.missedTitle}>
+                {missed.length} {L.missedDoses}
+              </Text>
+              <Text style={styles.missedSub}>{L.missedDosesSubtitle}</Text>
+              {missed.slice(0, 3).map((m, i) => (
+                <Text key={i} style={styles.missedItem}>• {m.medication_name} · {m.scheduled_time}</Text>
+              ))}
             </View>
           </View>
         )}
@@ -222,6 +272,15 @@ const styles = StyleSheet.create({
   streakIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FDEEE7', justifyContent: 'center', alignItems: 'center' },
   streakNum: { fontSize: 18, fontWeight: '800', color: colors.textMain },
   streakSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  missedCard: {
+    flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FDEEE7',
+    borderRadius: radius.xl, padding: spacing.lg, gap: spacing.md, marginBottom: spacing.lg,
+    borderWidth: 1, borderColor: '#FCC8B0',
+  },
+  missedIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FCC8B0', justifyContent: 'center', alignItems: 'center' },
+  missedTitle: { fontSize: 15, fontWeight: '800', color: colors.accent },
+  missedSub: { fontSize: 12, color: colors.textMain, marginTop: 2 },
+  missedItem: { fontSize: 13, color: colors.textMain, marginTop: 4 },
   summaryRow: { flexDirection: 'row', gap: 10, marginBottom: spacing.lg },
   summaryCard: {
     flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg,

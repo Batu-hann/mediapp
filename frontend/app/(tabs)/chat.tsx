@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Send, Trash2, MessageCircle } from 'lucide-react-native';
+import Markdown from 'react-native-markdown-display';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/AuthContext';
 import { colors, radius, spacing, shadows } from '../../src/theme';
@@ -102,7 +103,13 @@ export default function ChatScreen() {
                 testID={`msg-${item.role}-${index}`}
                 style={[styles.bubble, item.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}
               >
-                <Text style={item.role === 'user' ? styles.userText : styles.aiText}>{item.content}</Text>
+                {item.role === 'user' ? (
+                  <Text style={styles.userText}>{item.content}</Text>
+                ) : (
+                  <Markdown style={markdownStyles}>
+                    {item.content}
+                  </Markdown>
+                )}
                 <Text style={[styles.time, item.role === 'user' && { color: 'rgba(255,255,255,0.7)' }]}>
                   {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
@@ -170,3 +177,10 @@ const styles = StyleSheet.create({
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted },
 });
+
+const markdownStyles = {
+  body: { color: colors.textMain, fontSize: 15, lineHeight: 21 },
+  paragraph: { marginTop: 0, marginBottom: 8 },
+  list_item: { marginBottom: 4 },
+  strong: { fontWeight: 'bold' as const },
+};

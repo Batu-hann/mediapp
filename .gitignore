@@ -48,6 +48,23 @@ dump.rdb
 
 # Python
 __pycache__/
+.venv/
+venv/
+env/
+
+# Expo / React Native
+/frontend/.expo/
+/frontend/.expo-shared/
+/frontend/.metro-cache/
+*.expo
+
+# Build artifacts
+*.log
+
+# Environment files
+.env
+*.env
+frontend/package-lock.json
 *pyc*
 venv/
 .venv/

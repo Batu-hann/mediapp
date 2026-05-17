@@ -1,10 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Linking, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Linking, ActivityIndicator, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { MapPin, Phone, Clock, Navigation } from 'lucide-react-native';
+import { MapPin, Phone, Clock, Navigation, Map as MapIcon } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/AuthContext';
@@ -69,8 +69,21 @@ export default function PharmacyScreen() {
   useFocusEffect(useCallback(() => { load(); }, [tab, radiusM]));
 
   const callPharmacy = (phone: string) => {
+    if (!phone) return Alert.alert(L.error, 'Telefon numarası bulunamadı');
     const url = `tel:${phone.replace(/\s/g, '')}`;
     Linking.openURL(url).catch(() => Alert.alert(L.error, 'Cannot open dialer'));
+  };
+
+  const openMap = (p: Pharmacy) => {
+    if (!p.lat || !p.lon) return Alert.alert(L.error, 'Konum bilgisi bulunamadı');
+    const url = Platform.select({
+      ios: `maps:0,0?q=${p.name}@${p.lat},${p.lon}`,
+      android: `geo:0,0?q=${p.lat},${p.lon}(${p.name})`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}`
+    });
+    if (url) {
+      Linking.openURL(url).catch(() => Alert.alert(L.error, 'Harita uygulaması açılamadı'));
+    }
   };
 
   return (
@@ -142,10 +155,16 @@ export default function PharmacyScreen() {
                     <Text style={styles.metaText}>{item.hours}</Text>
                   </View>
                 </View>
-                <TouchableOpacity testID={`call-${index}`} style={styles.callBtn} onPress={() => callPharmacy(item.phone)}>
-                  <Phone size={14} color="#fff" />
-                  <Text style={styles.callText}>{item.phone}</Text>
-                </TouchableOpacity>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity testID={`call-${index}`} style={styles.callBtn} onPress={() => callPharmacy(item.phone)}>
+                    <Phone size={14} color="#fff" />
+                    <Text style={styles.callText}>{item.phone || L.call}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity testID={`map-${index}`} style={styles.mapBtn} onPress={() => openMap(item)}>
+                    <MapIcon size={14} color={colors.primary} />
+                    <Text style={styles.mapText}>{language === 'tr' ? 'Yol Tarifi' : 'Directions'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
@@ -183,8 +202,11 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: colors.textMuted },
   dutyBadge: { backgroundColor: colors.secondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
   dutyText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  callBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', backgroundColor: colors.secondary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  callBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.secondary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
   callText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  mapBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E6F0FB', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
+  mapText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xxl },
   emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.chatAi, justifyContent: 'center', alignItems: 'center', marginBottom: spacing.lg },
   emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },

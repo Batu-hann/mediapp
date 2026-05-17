@@ -10,6 +10,7 @@ import { api } from '../src/api';
 import { useAuth } from '../src/AuthContext';
 import { colors, radius, spacing, shadows } from '../src/theme';
 import { t } from '../src/i18n';
+import { scheduleMedicationReminders, cancelMedicationReminders } from '../src/services/notifications';
 
 export default function MedicationForm() {
   const { language } = useAuth();
@@ -75,10 +76,23 @@ export default function MedicationForm() {
         frequency_per_day: freq, times,
         duration_days: dur, notes,
       };
-      if (isEdit) {
-        await api.put(`/medications/${params.id}`, payload);
+      let savedId = params.id as string | undefined;
+      if (isEdit && savedId) {
+        await api.put(`/medications/${savedId}`, payload);
       } else {
-        await api.post('/medications', payload);
+        const r = await api.post('/medications', payload);
+        savedId = r.data.id;
+      }
+      // Schedule daily local notifications (calendar trigger, repeats=true)
+      if (savedId) {
+        try {
+          await scheduleMedicationReminders({
+            medicationId: savedId,
+            medicationName: payload.name,
+            dosage: payload.dosage,
+            times: payload.times,
+          });
+        } catch (e) { /* notifications optional on web */ }
       }
       router.back();
     } catch (e: any) {

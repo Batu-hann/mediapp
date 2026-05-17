@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Home, Pill, MessageCircle, MapPin, User } from 'lucide-react-native';
+import { Home, Pill, MessageCircle, MapPin, User, FileText } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import { colors } from '../../src/theme';
 import { useAuth } from '../../src/AuthContext';
@@ -54,6 +54,14 @@ export default function TabsLayout() {
           title: L.chat,
           tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} strokeWidth={2} />,
           tabBarButton: makeTabButton('tab-chat'),
+        }}
+      />
+      <Tabs.Screen
+        name="lab-test"
+        options={{
+          title: L.scanLabTest || 'Tahlil',
+          tabBarIcon: ({ color, size }) => <FileText size={size} color={color} strokeWidth={2} />,
+          tabBarButton: makeTabButton('tab-lab-test'),
         }}
       />
       <Tabs.Screen

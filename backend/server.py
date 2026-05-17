@@ -15,9 +15,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 import bcrypt
 import jwt
+import httpx
 from dotenv import load_dotenv
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -28,7 +29,11 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "10080"))
-EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+NOSYAPI_KEY = os.environ.get("NOSYAPI_KEY", "")
+NOSYAPI_BASE = os.environ.get("NOSYAPI_BASE", "https://www.nosyapi.com/apiv2/service")
 
 # --- DB ---
 client = AsyncIOMotorClient(MONGO_URL)
@@ -576,7 +581,7 @@ async def per_med_adherence(user: dict = Depends(get_current_user)):
 # =========================
 # AI CHAT
 # =========================
-HEALTH_SYSTEM_PROMPT = """You are MediAssist Health Assistant, a helpful but cautious AI designed exclusively to assist users with health-related questions. You ONLY respond to questions about: symptoms, medications, herbal remedies, nutrition, general wellness, first aid, and medical terminology. You MUST REFUSE to answer any non-health-related questions politely. You NEVER provide definitive diagnoses or prescribe treatments. Every response MUST end with: '⚠️ Bu bilgi yalnızca genel sağlık amaçlıdır. Lütfen mutlaka bir doktora veya eczacıya danışın.' You may suggest herbal/natural remedies when relevant but always note they are complementary, not replacements for medical care. Respond in the same language as the user (Turkish or English). Keep responses concise, clear, and empathetic. You may use markdown (bold, lists) for clarity."""
+HEALTH_SYSTEM_PROMPT = """You are MediAssist Health Assistant, a helpful but cautious AI designed exclusively to assist users with health-related questions. You ONLY respond to questions about: symptoms, medications, herbal remedies, nutrition, general wellness, first aid, and medical terminology. You MUST REFUSE to answer any non-health-related questions politely. You NEVER provide definitive diagnoses or prescribe treatments. Every response MUST end with: '⚠️ Bu bilgi yalnızca genel sağlık amaçlıdır. Lütfen mutlaka bir doktora veya eczacıya danışın.' You may suggest herbal/natural remedies when relevant but always note they are complementary, not replacements for medical care. Respond in the same language as the user (Turkish or English). Keep responses concise, clear, and empathetic."""
 
 
 @api.post("/chat/send")
@@ -593,12 +598,16 @@ async def chat_send(req: ChatRequest, user: dict = Depends(get_current_user)):
     user_msg_doc.pop("_id", None)
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"health-{user['id']}",
-            system_message=HEALTH_SYSTEM_PROMPT,
-        ).with_model("openai", "gpt-4o")
-        response_text = await chat.send_message(UserMessage(text=req.message))
+        model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=HEALTH_SYSTEM_PROMPT)
+        recent_msgs = await db.chat_messages.find({"user_id": user["id"]}, {"_id": 0}).sort("timestamp", 1).to_list(50)
+        
+        contents = []
+        for m in recent_msgs:
+            role = "user" if m["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [m["content"]]})
+            
+        response = await model.generate_content_async(contents)
+        response_text = response.text
     except Exception as e:
         logger.exception("LLM error")
         raise HTTPException(500, f"AI service error: {str(e)}")
@@ -682,14 +691,12 @@ async def scan_medication(req: VisionScanRequest, user: dict = Depends(get_curre
     prompt = VISION_PROMPT_TR if req.language == "tr" else VISION_PROMPT_EN
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"vision-{user['id']}-{uuid.uuid4()}",
-            system_message="You are a pharmaceutical vision expert. Always respond with valid JSON only.",
-        ).with_model("openai", "gpt-4o")
-
-        msg = UserMessage(text=prompt, file_contents=[ImageContent(image_base64=img_b64)])
-        response_text = await chat.send_message(msg)
+        model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"response_mime_type": "application/json"})
+        response = await model.generate_content_async([
+            {"mime_type": "image/jpeg", "data": img_b64},
+            "You are a pharmaceutical vision expert. Always respond with valid JSON only.\n\n" + prompt
+        ])
+        response_text = response.text
     except Exception as e:
         logger.exception("Vision error")
         raise HTTPException(500, f"AI vision error: {str(e)}")
@@ -720,8 +727,35 @@ async def scan_medication(req: VisionScanRequest, user: dict = Depends(get_curre
     return data
 
 
+LAB_TEST_PROMPT_TR = """Bu bir tıbbi tahlil/laboratuvar sonucu görselidir. Lütfen sonuçları analiz et. Anormal değerleri (referans aralığı dışında olanları) vurgula. Hastanın anlayabileceği sade bir dille sonuçların genel bir özetini yap. Unutma, bu sadece bilgilendirme amaçlıdır ve doktor tavsiyesi yerine geçmez. Lütfen Markdown formatında düzenli bir metin döndür."""
+
+LAB_TEST_PROMPT_EN = """This is a medical lab test/laboratory result image. Please analyze the results. Highlight any abnormal values (outside the reference range). Provide a general summary of the results in simple language that a patient can understand. Remember, this is for informational purposes only and does not replace medical advice. Please return the response in formatted Markdown."""
+
+@api.post("/vision/scan-lab-test")
+async def scan_lab_test(req: VisionScanRequest, user: dict = Depends(get_current_user)):
+    if not req.image_base64:
+        raise HTTPException(400, "No image provided")
+
+    img_b64 = req.image_base64
+    if img_b64.startswith("data:"):
+        img_b64 = img_b64.split(",", 1)[-1]
+
+    prompt = LAB_TEST_PROMPT_TR if req.language == "tr" else LAB_TEST_PROMPT_EN
+
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = await model.generate_content_async([
+            {"mime_type": "image/jpeg", "data": img_b64},
+            prompt
+        ])
+        return {"result": response.text}
+    except Exception as e:
+        logger.exception("Lab test vision error")
+        raise HTTPException(500, f"AI vision error: {str(e)}")
+
+
 # =========================
-# PHARMACY FINDER (mock, location-aware)
+# PHARMACY FINDER - NosyAPI proxy
 # =========================
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000  # meters
@@ -731,19 +765,130 @@ def haversine(lat1, lon1, lat2, lon2):
     return 2 * R * math.asin(math.sqrt(a))
 
 
-# Sample pharmacy database — mocked Turkish pharmacies (will offset relative to user location)
-MOCK_PHARMACIES = [
-    {"name": "Şifa Eczanesi", "address": "Atatürk Caddesi No:12", "phone": "+90 212 555 0101", "hours": "08:30 - 19:00", "lat_off": 0.0010, "lon_off": 0.0012, "on_call": False},
-    {"name": "Merkez Eczanesi", "address": "Cumhuriyet Mah. 5. Sok.", "phone": "+90 212 555 0102", "hours": "08:30 - 19:00", "lat_off": -0.0015, "lon_off": 0.0008, "on_call": True},
-    {"name": "Hayat Eczanesi", "address": "Bahçelievler Cad. No:34", "phone": "+90 212 555 0103", "hours": "08:30 - 19:00", "lat_off": 0.0025, "lon_off": -0.0018, "on_call": False},
-    {"name": "Sağlık Eczanesi", "address": "İstiklal Cad. No:88", "phone": "+90 212 555 0104", "hours": "24 Saat (Nöbetçi)", "lat_off": -0.0008, "lon_off": -0.0022, "on_call": True},
-    {"name": "Anadolu Eczanesi", "address": "Yeni Mahalle 2. Cad.", "phone": "+90 212 555 0105", "hours": "08:30 - 19:00", "lat_off": 0.0040, "lon_off": 0.0030, "on_call": False},
-    {"name": "Doğa Eczanesi", "address": "Park Yolu No:7", "phone": "+90 212 555 0106", "hours": "08:30 - 19:00", "lat_off": -0.0035, "lon_off": 0.0019, "on_call": False},
-    {"name": "Yaşam Eczanesi", "address": "Hastane Karşısı No:1", "phone": "+90 212 555 0107", "hours": "24 Saat (Nöbetçi)", "lat_off": 0.0018, "lon_off": -0.0040, "on_call": True},
-    {"name": "Pınar Eczanesi", "address": "Pazar Cad. No:23", "phone": "+90 212 555 0108", "hours": "08:30 - 19:00", "lat_off": -0.0025, "lon_off": -0.0015, "on_call": False},
-    {"name": "Devrim Eczanesi", "address": "Devrim Sok. No:11", "phone": "+90 212 555 0109", "hours": "08:30 - 19:00", "lat_off": 0.0050, "lon_off": -0.0008, "on_call": False},
-    {"name": "Umut Eczanesi", "address": "Hürriyet Cad. No:55", "phone": "+90 212 555 0110", "hours": "08:30 - 19:00", "lat_off": -0.0048, "lon_off": 0.0035, "on_call": False},
-]
+# Tiny in-memory cache (key: f"{lat:.3f},{lon:.3f},{duty}", expires after 60s)
+_pharmacy_cache: dict = {}
+_PHARMACY_CACHE_TTL = 60  # seconds
+
+
+def _normalize_pharmacy_item(p: dict, user_lat: float, user_lon: float, on_call: bool) -> dict:
+    """Convert NosyAPI item into our app's pharmacy format."""
+    # NosyAPI fields can be: name, district, city, address, phone, lat/lng or latitude/longitude
+    plat = p.get("lat") or p.get("latitude") or p.get("Latitude")
+    plon = p.get("lng") or p.get("lon") or p.get("longitude") or p.get("Longitude")
+    try:
+        plat = float(plat) if plat is not None else None
+        plon = float(plon) if plon is not None else None
+    except (TypeError, ValueError):
+        plat = plon = None
+
+    distance_m = int(haversine(user_lat, user_lon, plat, plon)) if plat and plon else None
+    name = p.get("name") or p.get("pharmacyName") or p.get("Name") or "Eczane"
+    address = p.get("address") or p.get("Address") or p.get("loc") or ""
+    if p.get("district") and p["district"] not in address:
+        address = f"{address}, {p['district']}".strip(", ")
+    phone = p.get("phone") or p.get("Phone") or p.get("phoneNumber") or ""
+    # Compose hours/dutyDate
+    duty_start = p.get("dutyStart") or p.get("startDate") or p.get("StartDate")
+    duty_end = p.get("dutyEnd") or p.get("endDate") or p.get("EndDate")
+    if on_call and duty_start and duty_end:
+        hours = "24 Saat (Nöbetçi)"
+    else:
+        hours = p.get("workingHours") or "08:30 - 19:00"
+
+    return {
+        "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{name}-{address}")),
+        "name": name,
+        "address": address,
+        "phone": phone,
+        "hours": hours,
+        "on_call": on_call,
+        "lat": plat,
+        "lon": plon,
+        "distance_m": distance_m,
+    }
+
+
+async def _fetch_nosy_duty_locations(lat: float, lon: float) -> list:
+    """Query NosyAPI for nearest 20 duty pharmacies."""
+    if not NOSYAPI_KEY:
+        return []
+    url = f"{NOSYAPI_BASE}/pharmacies-on-duty/locations"
+    params = {"apiKey": NOSYAPI_KEY, "latitude": lat, "longitude": lon}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as cx:
+            r = await cx.get(url, params=params)
+            if r.status_code != 200:
+                logger.warning(f"NosyAPI duty/locations -> {r.status_code}: {r.text[:200]}")
+                return []
+            data = r.json()
+            if data.get("status") == "failure":
+                logger.warning(f"NosyAPI failure: {data.get('message')}")
+                return []
+            return data.get("data") or data.get("result") or []
+    except Exception as e:
+        logger.exception(f"NosyAPI duty/locations error: {e}")
+        return []
+
+
+async def _fetch_nosy_duty_by_city(city: str, district: Optional[str] = None) -> list:
+    if not NOSYAPI_KEY:
+        return []
+    url = f"{NOSYAPI_BASE}/pharmacies-on-duty"
+    params = {"apiKey": NOSYAPI_KEY, "city": city}
+    if district:
+        params["district"] = district
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as cx:
+            r = await cx.get(url, params=params)
+            if r.status_code != 200:
+                logger.warning(f"NosyAPI duty -> {r.status_code}: {r.text[:200]}")
+                return []
+            data = r.json()
+            return data.get("data") or data.get("result") or []
+    except Exception as e:
+        logger.exception(f"NosyAPI duty by city error: {e}")
+        return []
+
+
+async def _fetch_nosy_all_locations(lat: float, lon: float) -> list:
+    if not NOSYAPI_KEY:
+        return []
+    url = f"{NOSYAPI_BASE}/pharmacies/locations"
+    params = {"apiKey": NOSYAPI_KEY, "latitude": lat, "longitude": lon}
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as cx:
+            r = await cx.get(url, params=params)
+            if r.status_code != 200:
+                logger.warning(f"NosyAPI all/locations -> {r.status_code}: {r.text[:200]}")
+                return []
+            data = r.json()
+            if data.get("status") == "failure":
+                logger.warning(f"NosyAPI failure: {data.get('message')}")
+                return []
+            return data.get("data") or data.get("result") or []
+    except Exception as e:
+        logger.exception(f"NosyAPI all/locations error: {e}")
+        return []
+
+
+async def _fetch_nosy_all_by_city(city: str, district: Optional[str] = None) -> list:
+    if not NOSYAPI_KEY:
+        return []
+    url = f"{NOSYAPI_BASE}/pharmacies"
+    params = {"apiKey": NOSYAPI_KEY, "city": city}
+    if district:
+        params["district"] = district
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as cx:
+            r = await cx.get(url, params=params)
+            if r.status_code != 200:
+                logger.warning(f"NosyAPI all/city -> {r.status_code}: {r.text[:200]}")
+                return []
+            data = r.json()
+            return data.get("data") or data.get("result") or []
+    except Exception as e:
+        logger.exception(f"NosyAPI all/city error: {e}")
+        return []
 
 
 @api.get("/pharmacies/nearby")
@@ -751,30 +896,237 @@ async def pharmacies_nearby(
     lat: float, lon: float, radius_m: int = 5000, on_call_only: bool = False,
     user: dict = Depends(get_current_user),
 ):
+    """Returns nearby pharmacies. Uses NosyAPI duty/locations endpoint with caching.
+
+    For 'all' tab: returns all pharmacies.
+    For 'on_call_only': returns duty pharmacies.
+    """
+    cache_key = f"{lat:.3f},{lon:.3f},{on_call_only}"
+    now_ts = datetime.now(timezone.utc).timestamp()
+    cached = _pharmacy_cache.get(cache_key)
+    raw_items: list
+    if cached and now_ts - cached["t"] < _PHARMACY_CACHE_TTL:
+        raw_items = cached["items"]
+    else:
+        if on_call_only:
+            raw_items = await _fetch_nosy_duty_locations(lat, lon)
+        else:
+            raw_items = await _fetch_nosy_all_locations(lat, lon)
+        _pharmacy_cache[cache_key] = {"t": now_ts, "items": raw_items}
+
     out = []
-    for p in MOCK_PHARMACIES:
-        plat = lat + p["lat_off"]
-        plon = lon + p["lon_off"]
-        d = haversine(lat, lon, plat, plon)
-        if d > radius_m:
+    for it in raw_items:
+        item = _normalize_pharmacy_item(it, lat, lon, on_call=on_call_only)
+        if item["distance_m"] is None:
             continue
-        if on_call_only and not p["on_call"]:
+        if item["distance_m"] > radius_m:
             continue
-        out.append(
+        out.append(item)
+
+    if on_call_only:
+        out = [p for p in out if p["on_call"]]
+
+    out.sort(key=lambda x: x["distance_m"])
+
+    # Fallback: if NosyAPI returned nothing (e.g., key has no active plan / outage),
+    # use a small mock so UI is never empty
+    if not out:
+        for offset in [(0.0010, 0.0012, "Şifa Eczanesi", "Atatürk Caddesi No:12", "+90 212 555 0101", False),
+                       (-0.0015, 0.0008, "Merkez Eczanesi", "Cumhuriyet Mah. 5. Sok.", "+90 212 555 0102", True),
+                       (0.0025, -0.0018, "Hayat Eczanesi", "Bahçelievler Cad. No:34", "+90 212 555 0103", False),
+                       (-0.0008, -0.0022, "Sağlık Eczanesi", "İstiklal Cad. No:88", "+90 212 555 0104", True),
+                       (0.0040, 0.0030, "Anadolu Eczanesi", "Yeni Mahalle 2. Cad.", "+90 212 555 0105", False),
+                       (-0.0035, 0.0019, "Doğa Eczanesi", "Park Yolu No:7", "+90 212 555 0106", False),
+                       (0.0018, -0.0040, "Yaşam Eczanesi", "Hastane Karşısı No:1", "+90 212 555 0107", True)]:
+            dlat, dlon, name, addr, phone, oc = offset
+            plat, plon = lat + dlat, lon + dlon
+            d = int(haversine(lat, lon, plat, plon))
+            if d > radius_m:
+                continue
+            if on_call_only and not oc:
+                continue
+            out.append({
+                "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, name)),
+                "name": name, "address": addr, "phone": phone,
+                "hours": "24 Saat (Nöbetçi)" if oc else "08:30 - 19:00",
+                "on_call": oc, "lat": plat, "lon": plon, "distance_m": d,
+            })
+        out.sort(key=lambda x: x["distance_m"])
+        return {"pharmacies": out, "source": "fallback"}
+
+    return {"pharmacies": out, "source": "nosyapi"}
+
+
+@api.get("/pharmacies/by-city")
+async def pharmacies_by_city(
+    city: str, district: Optional[str] = None, on_call_only: bool = False,
+    user: dict = Depends(get_current_user),
+):
+    """Lookup pharmacies by city/district name (NosyAPI proxy)."""
+    if on_call_only:
+        raw = await _fetch_nosy_duty_by_city(city, district)
+    else:
+        raw = await _fetch_nosy_all_by_city(city, district)
+    out = [_normalize_pharmacy_item(it, 0.0, 0.0, on_call=on_call_only) for it in raw]
+    return {"pharmacies": out, "city": city, "district": district}
+
+
+# =========================
+# NOTIFICATION LOGS
+# =========================
+class NotificationLogCreate(BaseModel):
+    medication_id: str
+    notification_id: str  # the local notification identifier from expo-notifications
+    scheduled_date: str   # YYYY-MM-DD
+    scheduled_time: str   # HH:MM
+    fired_at: Optional[str] = None
+    status: Literal["scheduled", "delivered", "taken", "snoozed", "skipped", "missed"] = "scheduled"
+    snooze_minutes: Optional[int] = None
+
+
+class NotificationLogUpdate(BaseModel):
+    status: Optional[Literal["scheduled", "delivered", "taken", "snoozed", "skipped", "missed"]] = None
+    fired_at: Optional[str] = None
+    snooze_minutes: Optional[int] = None
+
+
+@api.post("/notification-logs")
+async def create_notification_log(payload: NotificationLogCreate, user: dict = Depends(get_current_user)):
+    # Idempotency: same notification_id → upsert
+    existing = await db.notification_logs.find_one(
+        {"user_id": user["id"], "notification_id": payload.notification_id}, {"_id": 0}
+    )
+    log_id = existing["id"] if existing else str(uuid.uuid4())
+    doc = {
+        "id": log_id,
+        "user_id": user["id"],
+        "medication_id": payload.medication_id,
+        "notification_id": payload.notification_id,
+        "scheduled_date": payload.scheduled_date,
+        "scheduled_time": payload.scheduled_time,
+        "fired_at": payload.fired_at,
+        "status": payload.status,
+        "snooze_minutes": payload.snooze_minutes,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if existing:
+        await db.notification_logs.update_one({"id": log_id}, {"$set": doc})
+    else:
+        await db.notification_logs.insert_one(dict(doc))
+    return doc
+
+
+@api.get("/notification-logs")
+async def list_notification_logs(
+    user: dict = Depends(get_current_user),
+    medication_id: Optional[str] = None,
+    status: Optional[str] = None,
+    days: int = 7,
+):
+    since = (DateType.today() - timedelta(days=days)).isoformat()
+    q: dict = {"user_id": user["id"], "scheduled_date": {"$gte": since}}
+    if medication_id:
+        q["medication_id"] = medication_id
+    if status:
+        q["status"] = status
+    docs = await db.notification_logs.find(q, {"_id": 0}).sort("scheduled_date", -1).to_list(500)
+    return {"logs": docs}
+
+
+@api.put("/notification-logs/{log_id}")
+async def update_notification_log(
+    log_id: str, payload: NotificationLogUpdate, user: dict = Depends(get_current_user),
+):
+    update = {k: v for k, v in payload.dict(exclude_none=True).items()}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.notification_logs.update_one({"id": log_id, "user_id": user["id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Notification log not found")
+    doc = await db.notification_logs.find_one({"id": log_id}, {"_id": 0})
+    return doc
+
+
+@api.post("/notification-logs/sweep-missed")
+async def sweep_missed(user: dict = Depends(get_current_user)):
+    """Mark scheduled notifications older than 60 minutes as missed (called by background task)."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+    today = DateType.today().isoformat()
+
+    # Find all scheduled/delivered logs for today/yesterday whose dose time + 60min has passed
+    candidates = await db.notification_logs.find(
+        {
+            "user_id": user["id"],
+            "status": {"$in": ["scheduled", "delivered", "snoozed"]},
+            "scheduled_date": {"$lte": today},
+        },
+        {"_id": 0},
+    ).to_list(500)
+
+    missed_count = 0
+    for log in candidates:
+        try:
+            dose_dt = datetime.strptime(f"{log['scheduled_date']} {log['scheduled_time']}", "%Y-%m-%d %H:%M")
+            if (datetime.now() - dose_dt).total_seconds() > 3600:
+                # check there's no dose log marking it taken/skipped
+                taken_log = await db.dose_logs.find_one({
+                    "user_id": user["id"],
+                    "medication_id": log["medication_id"],
+                    "scheduled_date": log["scheduled_date"],
+                    "scheduled_time": log["scheduled_time"],
+                })
+                if not taken_log:
+                    await db.notification_logs.update_one(
+                        {"id": log["id"]}, {"$set": {"status": "missed", "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    missed_count += 1
+        except Exception:
+            continue
+    return {"missed_count": missed_count}
+
+
+@api.get("/missed-doses")
+async def get_missed_doses(user: dict = Depends(get_current_user), days: int = 1):
+    """Return missed doses for warning UI. Combines dose_logs (no log = potential miss) and notification_logs (status=missed)."""
+    today = DateType.today()
+    out = []
+    for i in range(days):
+        d = today - timedelta(days=i)
+        d_str = d.isoformat()
+
+        meds = await db.medications.find(
             {
-                "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, p["name"])),
-                "name": p["name"],
-                "address": p["address"],
-                "phone": p["phone"],
-                "hours": p["hours"],
-                "on_call": p["on_call"],
-                "lat": plat,
-                "lon": plon,
-                "distance_m": int(d),
-            }
-        )
-    out.sort(key=lambda x: (not x["on_call"] if on_call_only else False, x["distance_m"]))
-    return {"pharmacies": out}
+                "user_id": user["id"],
+                "start_date": {"$lte": d_str},
+                "end_date": {"$gte": d_str},
+            },
+            {"_id": 0},
+        ).to_list(200)
+
+        logs = await db.dose_logs.find(
+            {"user_id": user["id"], "scheduled_date": d_str}, {"_id": 0}
+        ).to_list(500)
+        log_idx = {(l["medication_id"], l["scheduled_time"]) for l in logs}
+
+        now = datetime.now()
+        for m in meds:
+            for t in m["times"]:
+                try:
+                    dose_dt = datetime.strptime(f"{d_str} {t}", "%Y-%m-%d %H:%M")
+                except Exception:
+                    continue
+                if (now - dose_dt).total_seconds() < 3600:
+                    continue  # not yet missed (within 60 min grace)
+                if (m["id"], t) in log_idx:
+                    continue
+                out.append({
+                    "medication_id": m["id"],
+                    "medication_name": m["name"],
+                    "dosage": m["dosage"],
+                    "scheduled_date": d_str,
+                    "scheduled_time": t,
+                })
+    return {"missed": out}
 
 
 # =========================
@@ -803,6 +1155,8 @@ async def on_startup():
     await db.medications.create_index([("user_id", 1), ("created_at", -1)])
     await db.dose_logs.create_index([("user_id", 1), ("scheduled_date", 1)])
     await db.chat_messages.create_index([("user_id", 1), ("timestamp", 1)])
+    await db.notification_logs.create_index([("user_id", 1), ("scheduled_date", -1)])
+    await db.notification_logs.create_index([("notification_id", 1)])
 
 
 @app.on_event("shutdown")

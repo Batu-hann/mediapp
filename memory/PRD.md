@@ -5,7 +5,7 @@ MediAssist is a full-stack mobile health app (React Native + Expo + FastAPI + Mo
 
 ## Stack
 - **Frontend:** React Native (Expo SDK 54), expo-router, AsyncStorage, axios, lucide-react-native, react-native-chart-kit, expo-camera, expo-image-picker, expo-location, expo-notifications
-- **Backend:** FastAPI, Motor (async MongoDB), PyJWT, bcrypt, emergentintegrations (OpenAI GPT-4o)
+- **Backend:** FastAPI, Motor (async MongoDB), PyJWT, bcrypt, openai (OpenAI GPT-4o)
 - **Database:** MongoDB (collections: users, medications, dose_logs, chat_messages)
 
 ## Features

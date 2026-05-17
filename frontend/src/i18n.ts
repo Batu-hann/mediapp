@@ -38,6 +38,10 @@ export const i18n = {
     findPharmacy: 'Eczane Bul',
     upcomingDoses: 'Yaklaşan Dozlar (2 saat)',
     noMedsToday: 'Bugün için planlanmış ilaç yok',
+    missedDoses: 'Atlanan Dozlar',
+    missedDosesSubtitle: 'Bu dozları zamanında almadın',
+    notificationsBlocked: 'Bildirimler kapalı — ayarlardan açın',
+    notificationsEnabled: 'Bildirimler aktif',
     // Medications
     addNew: 'Yeni Ekle',
     medName: 'İlaç Adı',
@@ -84,6 +88,10 @@ export const i18n = {
     warnings: 'Uyarılar',
     dosageInfo: 'Dozaj Bilgisi',
     notIdentified: 'İlaç tanımlanamadı',
+    // Lab Test
+    labTestTitle: 'Tahlil Tarama',
+    labTestEmpty: 'Tahlil sonucunuzun fotoğrafını çekerek veya galeriden seçerek yapay zekaya analiz ettirebilirsiniz.',
+    scanLabTest: 'Tahlil Oku',
     // Pharmacy
     nearbyPharmacies: 'Yakındaki Eczaneler',
     allPharmacies: 'Tümü',
@@ -146,6 +154,10 @@ export const i18n = {
     findPharmacy: 'Pharmacy',
     upcomingDoses: 'Upcoming Doses (2 hours)',
     noMedsToday: 'No medications scheduled for today',
+    missedDoses: 'Missed Doses',
+    missedDosesSubtitle: "You haven't taken these on time",
+    notificationsBlocked: 'Notifications off — enable in settings',
+    notificationsEnabled: 'Notifications enabled',
     addNew: 'New',
     medName: 'Medication Name',
     dosage: 'Dosage',
@@ -189,6 +201,11 @@ export const i18n = {
     warnings: 'Warnings',
     dosageInfo: 'Dosage Info',
     notIdentified: 'Medication not identified',
+    // Lab Test
+    labTestTitle: 'Lab Test Scan',
+    labTestEmpty: 'Take a photo or choose from gallery to let AI analyze your lab results.',
+    scanLabTest: 'Scan Lab Test',
+    // Pharmacy
     nearbyPharmacies: 'Nearby Pharmacies',
     allPharmacies: 'All',
     onCallPharmacies: 'On-Call',

@@ -10,6 +10,7 @@ import { api } from '../../src/api';
 import { useAuth } from '../../src/AuthContext';
 import { colors, radius, spacing, shadows } from '../../src/theme';
 import { t } from '../../src/i18n';
+import { cancelMedicationReminders } from '../../src/services/notifications';
 
 type Med = {
   id: string;
@@ -63,6 +64,7 @@ export default function MedicationsScreen() {
         text: L.delete, style: 'destructive', onPress: async () => {
           try {
             await api.delete(`/medications/${m.id}`);
+            await cancelMedicationReminders(m.id).catch(() => {});
             load();
           } catch (e: any) {
             Alert.alert(L.error, e?.response?.data?.detail || 'Failed');

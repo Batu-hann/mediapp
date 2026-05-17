@@ -6,11 +6,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ActivityIndicator, View } from 'react-native';
 import { colors } from '../src/theme';
 import { StatusBar } from 'expo-status-bar';
+import { useNotificationListeners } from '../src/hooks/useNotificationListeners';
 
 function RootNavigator() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  useNotificationListeners();
 
   React.useEffect(() => {
     if (loading) return;
