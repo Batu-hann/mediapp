@@ -851,43 +851,60 @@ async def _fetch_nosy_duty_by_city(city: str, district: Optional[str] = None) ->
 
 
 async def _fetch_nosy_all_locations(lat: float, lon: float) -> list:
-    if not NOSYAPI_KEY:
-        return []
-    url = f"{NOSYAPI_BASE}/pharmacies/locations"
-    params = {"apiKey": NOSYAPI_KEY, "latitude": lat, "longitude": lon}
+    # Use Nominatim (OSM) for all pharmacies to avoid NosyAPI credit limits
+    radius_m = 5000
+    dlat = radius_m / 111000.0
+    dlon = radius_m / (111000.0 * 0.75)
+    viewbox = f"{lon-dlon},{lat+dlat},{lon+dlon},{lat-dlat}"
+    
+    url = "https://nominatim.openstreetmap.org/search.php"
+    params = {"q": "pharmacy", "format": "jsonv2", "viewbox": viewbox, "bounded": 1, "limit": 50, "extratags": 1}
     try:
         async with httpx.AsyncClient(timeout=12.0) as cx:
-            r = await cx.get(url, params=params)
+            r = await cx.get(url, params=params, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0) MediAssist/1.0"})
             if r.status_code != 200:
-                logger.warning(f"NosyAPI all/locations -> {r.status_code}: {r.text[:200]}")
+                logger.warning(f"Nominatim all/locations -> {r.status_code}: {r.text[:200]}")
                 return []
             data = r.json()
-            if data.get("status") == "failure":
-                logger.warning(f"NosyAPI failure: {data.get('message')}")
-                return []
-            return data.get("data") or data.get("result") or []
+            out = []
+            for d in data:
+                out.append({
+                    "name": d.get("name") or "Eczane",
+                    "address": d.get("display_name", ""),
+                    "phone": d.get("extratags", {}).get("phone") or d.get("extratags", {}).get("contact:phone") or "",
+                    "latitude": d.get("lat"),
+                    "longitude": d.get("lon")
+                })
+            return out
     except Exception as e:
-        logger.exception(f"NosyAPI all/locations error: {e}")
+        logger.exception(f"Nominatim all/locations error: {e}")
         return []
 
 
 async def _fetch_nosy_all_by_city(city: str, district: Optional[str] = None) -> list:
-    if not NOSYAPI_KEY:
-        return []
-    url = f"{NOSYAPI_BASE}/pharmacies"
-    params = {"apiKey": NOSYAPI_KEY, "city": city}
-    if district:
-        params["district"] = district
+    # Use Nominatim (OSM) for all pharmacies by city
+    url = "https://nominatim.openstreetmap.org/search.php"
+    q_str = f"pharmacy in {district}, {city}, Turkey" if district else f"pharmacy in {city}, Turkey"
+    params = {"q": q_str, "format": "jsonv2", "limit": 50, "extratags": 1}
     try:
         async with httpx.AsyncClient(timeout=12.0) as cx:
-            r = await cx.get(url, params=params)
+            r = await cx.get(url, params=params, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0) MediAssist/1.0"})
             if r.status_code != 200:
-                logger.warning(f"NosyAPI all/city -> {r.status_code}: {r.text[:200]}")
+                logger.warning(f"Nominatim all/city -> {r.status_code}: {r.text[:200]}")
                 return []
             data = r.json()
-            return data.get("data") or data.get("result") or []
+            out = []
+            for d in data:
+                out.append({
+                    "name": d.get("name") or "Eczane",
+                    "address": d.get("display_name", ""),
+                    "phone": d.get("extratags", {}).get("phone") or d.get("extratags", {}).get("contact:phone") or "",
+                    "latitude": d.get("lat"),
+                    "longitude": d.get("lon")
+                })
+            return out
     except Exception as e:
-        logger.exception(f"NosyAPI all/city error: {e}")
+        logger.exception(f"Nominatim all/city error: {e}")
         return []
 
 
