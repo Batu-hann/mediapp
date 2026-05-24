@@ -1,0 +1,183 @@
+{
+  "project": {
+    "name": "MediAssist",
+    "type": "React Native Expo App",
+    "theme": "LIGHT",
+    "archetype": "1 (Organic & Earthy)"
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Manrope",
+      "body": "Work Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": { "fontSize": 36, "lineHeight": 44, "fontWeight": "800", "tracking": "tight" },
+      "h2": { "fontSize": 28, "lineHeight": 36, "fontWeight": "700", "tracking": "tight" },
+      "h3": { "fontSize": 22, "lineHeight": 30, "fontWeight": "600" },
+      "body_large": { "fontSize": 18, "lineHeight": 28, "fontWeight": "400" },
+      "body": { "fontSize": 16, "lineHeight": 24, "fontWeight": "400" },
+      "caption": { "fontSize": 14, "lineHeight": 20, "fontWeight": "500", "letterSpacing": 0.5 }
+    }
+  },
+  "colors": {
+    "brand": {
+      "primary": "#4A90D9",
+      "primary_hover": "#3A7CB8",
+      "secondary": "#34C47C",
+      "secondary_hover": "#2CA367",
+      "accent": "#E88D67"
+    },
+    "backgrounds": {
+      "base": "#FCFBF8",
+      "surface": "#FFFFFF",
+      "surface_elevated": "#F7FAFC",
+      "chat_ai": "#F0F4F8"
+    },
+    "text": {
+      "main": "#1A202C",
+      "muted": "#718096",
+      "inverse": "#FFFFFF",
+      "primary": "#4A90D9"
+    },
+    "status": {
+      "success": "#34C47C",
+      "warning": "#F6AD55",
+      "error": "#E88D67",
+      "info": "#4A90D9"
+    },
+    "border": {
+      "light": "#EDF2F7",
+      "medium": "#E2E8F0"
+    }
+  },
+  "layout_and_spacing": {
+    "padding": {
+      "screen": 24,
+      "card": 20,
+      "input": 16,
+      "button": 16
+    },
+    "borderRadius": {
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24,
+      "pill": 9999
+    },
+    "shadows": {
+      "card": {
+        "shadowColor": "#1A202C",
+        "shadowOffset": { "width": 0, "height": 4 },
+        "shadowOpacity": 0.05,
+        "shadowRadius": 12,
+        "elevation": 2
+      },
+      "floating": {
+        "shadowColor": "#4A90D9",
+        "shadowOffset": { "width": 0, "height": 8 },
+        "shadowOpacity": 0.15,
+        "shadowRadius": 24,
+        "elevation": 5
+      }
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": {
+        "backgroundColor": "#4A90D9",
+        "borderRadius": 9999,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "alignItems": "center"
+      },
+      "secondary": {
+        "backgroundColor": "transparent",
+        "borderWidth": 1.5,
+        "borderColor": "#EDF2F7",
+        "borderRadius": 9999,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24
+      }
+    },
+    "cards": {
+      "default": {
+        "backgroundColor": "#FFFFFF",
+        "borderRadius": 24,
+        "padding": 20,
+        "borderWidth": 1,
+        "borderColor": "#EDF2F7"
+      },
+      "glass": {
+        "backgroundColor": "rgba(255, 255, 255, 0.8)",
+        "borderRadius": 24
+      }
+    },
+    "bottom_tab": {
+      "backgroundColor": "#FFFFFF",
+      "borderTopWidth": 1,
+      "borderTopColor": "#EDF2F7",
+      "height": 80,
+      "activeTintColor": "#4A90D9",
+      "inactiveTintColor": "#A0AEC0"
+    }
+  },
+  "screens": {
+    "home_dashboard": {
+      "description": "Timeline and streak view.",
+      "streak_widget": "Top horizontal row of pills or dates. Heatmap or checkmarks to show taken vs missed.",
+      "daily_timeline": "Vertical scroll of cards. Each card has a time, dose, and swipe-to-log action.",
+      "empty_state": "Friendly illustrated vector (Lucide icon) in center. 'No meds scheduled for today!'"
+    },
+    "ai_chat": {
+      "description": "Health Assistant UI.",
+      "bubbles": {
+        "user": "Right aligned, #4A90D9 background, white text, rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-sm",
+        "ai": "Left aligned, #F0F4F8 background, dark text, rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-sm"
+      },
+      "input": "Pill-shaped text input with a circular send button."
+    },
+    "pharmacy_finder": {
+      "description": "Map and list view.",
+      "map": "Uses react-native-maps. Custom marker icons using Lucide-React-Native.",
+      "on_call_tab": "Segmented control at top (All vs On-Call). On-call pharmacies have a green #34C47C badge."
+    },
+    "camera_scanner": {
+      "description": "Medication recognition view.",
+      "overlay": "Transparent center cutout with rounded corner brackets.",
+      "results_sheet": "Bottom sheet modal popping up after scan with medication info."
+    }
+  },
+  "motion": {
+    "libraries": ["react-native-reanimated"],
+    "patterns": {
+      "page_transition": "Fade and slight slide up",
+      "card_press": "Scale down to 0.98",
+      "swipe_action": "Spring animation for marking medication as taken",
+      "skeleton_loading": "Shimmer effect on #EDF2F7 background for loading states"
+    }
+  },
+  "testing": {
+    "attribute": "testID",
+    "convention": "kebab-case, role-based (e.g., testID=\"medication-add-button\")"
+  },
+  "icons": {
+    "library": "lucide-react-native",
+    "strokeWidth": 2,
+    "sizes": {
+      "sm": 16,
+      "md": 24,
+      "lg": 32,
+      "xl": 48
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use react-native, expo, and expo-router for the app structure.",
+    "Do NOT use web-only libraries like Tailwind or shadcn/ui. Instead, translate these design guidelines into React Native StyleSheet or NativeWind classes.",
+    "Use 'testID' instead of 'data-testid' for all interactive components.",
+    "Implement Organic & Earthy archetype: Avoid harsh pure black or pure white; rely on #FCFBF8 for screen backgrounds and #FFFFFF for cards.",
+    "For empty states, utilize lucide-react-native icons scaled up with a soft #F0F4F8 circular background.",
+    "Follow the rounded-3xl (24px) border radius for major cards to keep the app friendly and approachable.",
+    "Ensure the layout provides generous padding (24px on screen edges)."
+  ]
+}
